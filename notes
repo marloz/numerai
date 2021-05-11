@@ -1,0 +1,50 @@
+# General notes
+Main priority right now is to create a framework for fast iteration and experimentation
+
+## Memory efficiency
+Data is mapped to int8 type instead of using default float64 to reduce memory usage and speed up training times (0, .25, .5, ... -> 0, 1, 2, ...)
+
+## Dimensionality reduction
+Using PCA or other method would reduce number of variables but return float type and getting to ~90% variance requires ~100 components.
+Training time is still faster when using int8 and there's parsimonity of not applying transforms.
+
+Other techniques, e.g. NN autoencoder could be tried at some point when lower hanging fruits of model improvement are picked and framework is stable.
+
+## Feature selection
+Because of the reasons mentioned in dimensionality reduction, model in-built feature selection might be better approach, because it keeps original data format.
+However, the 'selector model' needs to be tuned first, if this model is performing poorly (provides low score), then the final model will be hugely handicapped.
+Essentially this requires 'double hyperparameter tuning', once again, maybe if initial baseline is solid enough it could be used as a selector before applying 'real' model.
+
+## Cross validation
+At first used only validation set for model tuning, good validation score might be accidental. It consists of 40 eras, while training data of 120,
+if one era is 1 month, it could be that those 40 eras span specifically 'easier' time period. Instead, I chose to use 3-fold split of training data for cross validation,
+so each cross-validation scoring fold is of the same size as validation set, so we get some idea on score stability. These splits are not done at random, because eras
+might have encoded temporal structure or regimes, so shuffling of eras might scramble this information and provide unrealistic scores, eras order is thus mainted.
+
+## Sampling
+Training data has ~500k rows, target is distributed unevenly (5 classes into 5%, 20%, 50%, 20%, 5%). Performing 3-fold validation on entire set would significantly increase
+experimentation time, especially when tuning hyper parameters. To solve this, I used number of records in smallest classes to downsmaple larger classes.
+
+## Feature engineering
+This part will be left for later. But some things could be tried like extracting metrics from feature groups. Adding cluster information. Adding PCA components or NN embeddings, etc.
+
+## Scoring
+Main metric used in tournament is spearman correlation between target and predictions, however, optimizing for it directly will not necessarily yield the best result.
+So far I've used sharpe ratio of spearman correlation calculated on each era, this gives a better gauge on how model performs on different eras and how variable it's performance is.
+There are other metrics worth considering (not sure exactly in which way, but might start by just having them printed out when comparing models) - adjusted sharpe, max drawdown,
+feature exposure.
+
+## Modelling
+So far I only tried RandomForestClassifier (might try regressor as well, but target seems to take only 5 values instead of being continuous),
+as it's relatively simple to tune and use right out of the box.
+Philosophy of tuning: faster iteration and better generalization >>> splitting hair on better score.
+For this reason I will stick with 100 estimators at first. Will limit tree size by setting max_samples (need to explore and decide what is sufficient, including all ->
+long training time + more correlated trees, maybe somewhere between 10k - 50k but have to look at train/valid scores, also note that when using max_samples,
+don't need to use sampling in CV if running with class_weights='balanced). Max_features can be explored by setting 'sqrt', 'log2', .5 or similarly using fractions,
+but same thing applies here - don't want to pass all features to each tree, because they will be correlated and take longer to train. Finally, need to tune min_samples_leaf,
+if set to 1, will take longer and might overfit, if set to something like 100 might be too shallow and each tree not strong predictor enough.
+The balance here is to find configuration that grows sufficiently deep trees to capture data complexity, but have them as independent as possible to generalize better,
+and as parsimonious as possible to keep sensible training times.
+
+
+ 
