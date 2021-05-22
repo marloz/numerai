@@ -93,22 +93,20 @@ class DataGetter:
 
 class PredictionSubmitter(DataGetter):
 
-    def __init__(self, napi, model, napi_user,
-                 features_to_use=None, prediction_file_name='preds.csv', chunksize=500_000):
-        super().__init__(napi)
+    def __init__(self, model, load_from=None, napi_user='mloz',
+                 use_cols=None, prediction_file_name='preds.csv', chunksize=500_000):
+        super().__init__()
         self.model = model
+        self.load_from = load_from
         self.model_id = self.napi.get_models()[napi_user]
-        self.features_to_use = (features_to_use if features_to_use is not None else
-                                self._get_columns_to_use(self._get_data_path('tournament'),
-                                                         features_to_use,
-                                                         column_patterns=['feature']))
+        self.use_cols = use_cols
         self.prediction_file_name = prediction_file_name
         self.chunksize = chunksize
 
     def submit(self):
-        use_cols = None if self.features_to_use is None else self.features_to_use + ['id', 'target', 'era']
-        tournament_data = self.get_data('tournament',
-                                        use_cols=use_cols,
+        tournament_data = self.get_data(load_from=self.load_from,
+                                        training_or_tournament='tournament',
+                                        use_cols=self.use_cols,
                                         chunksize=self.chunksize)
         print('Making predictions')
         self.make_predictions(tournament_data)
@@ -117,7 +115,8 @@ class PredictionSubmitter(DataGetter):
         print(self.napi.submission_status(self.model_id))
 
     def make_predictions(self, tournament_data):
-        X, y = tournament_data[self.features_to_use], tournament_data['target']
+        features = [col for col in tournament_data if 'feature' in col]
+        X, y = tournament_data[features], tournament_data['target']
         predictions = pd.Series(self.model.predict(X), index=y.index, name='prediction')
         self.get_validation_score(y, predictions)
         self.save_predictions(predictions)
